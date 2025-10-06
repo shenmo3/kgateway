@@ -28,8 +28,8 @@ func TestBinaryValidator_Validate(t *testing.T) {
 			yaml: "any-config-here",
 			mockBinary: func(t *testing.T) string {
 				script := `#!/bin/sh
-if [ "$1" != "--mode" ] || [ "$2" != "validate" ] || [ "$3" != "--config-yaml" ]; then
-    echo "Invalid arguments, expected: --mode validate --config-yaml" >&2
+if [ "$1" != "--mode" ] || [ "$2" != "validate" ] || [ "$3" != "--config-path" ]; then
+    echo "Invalid arguments, expected: --mode validate --config-path" >&2
     exit 1
 fi
 exit 0
@@ -43,8 +43,8 @@ exit 0
 			yaml: "any-config-here", // actual config content doesn't matter for this test
 			mockBinary: func(t *testing.T) string {
 				script := `#!/bin/sh
-if [ "$1" != "--mode" ] || [ "$2" != "validate" ] || [ "$3" != "--config-yaml" ]; then
-    echo "Invalid arguments, expected: --mode validate --config-yaml" >&2
+if [ "$1" != "--mode" ] || [ "$2" != "validate" ] || [ "$3" != "--config-path" ]; then
+    echo "Invalid arguments, expected: --mode validate --config-path" >&2
     exit 1
 fi
 echo "error initializing configuration '': missing ]:" >&2
@@ -96,105 +96,204 @@ func TestDockerValidator_Validate(t *testing.T) {
 	}{
 		{
 			name: "valid configuration",
-			yaml: `node:
-  id: test-id
-  cluster: test-cluster
-static_resources:
-  listeners:
-    - name: listener_0
-      address:
-        socket_address:
-          address: 0.0.0.0
-          port_value: 10000
-      filter_chains:
-        - filters:
-            - name: envoy.filters.network.http_connection_manager
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-                stat_prefix: ingress_http
-                route_config:
-                  name: local_route
-                  virtual_hosts:
-                    - name: local_service
-                      domains: ["*"]
-                      routes:
-                        - match:
-                            prefix: "/"
-                          route:
-                            cluster: service_foo
-  clusters:
-    - name: service_foo
-      connect_timeout: 0.25s
-      type: STATIC
-      lb_policy: ROUND_ROBIN
-      load_assignment:
-        cluster_name: service_foo
-        endpoints:
-          - lb_endpoints:
-              - endpoint:
-                  address:
-                    socket_address:
-                      address: 127.0.0.1
-                      port_value: 8080`,
+			yaml: `{
+  "node": {
+    "id": "test-id",
+    "cluster": "test-cluster"
+  },
+  "static_resources": {
+    "listeners": [
+      {
+        "name": "listener_0",
+        "address": {
+          "socket_address": {
+            "address": "0.0.0.0",
+            "port_value": 10000
+          }
+        },
+        "filter_chains": [
+          {
+            "filters": [
+              {
+                "name": "envoy.filters.network.http_connection_manager",
+                "typed_config": {
+                  "@type": "type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager",
+                  "stat_prefix": "ingress_http",
+                  "route_config": {
+                    "name": "local_route",
+                    "virtual_hosts": [
+                      {
+                        "name": "local_service",
+                        "domains": ["*"],
+                        "routes": [
+                          {
+                            "match": {
+                              "prefix": "/"
+                            },
+                            "route": {
+                              "cluster": "service_foo"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "http_filters": [
+                    {
+                      "name": "envoy.filters.http.router",
+                      "typed_config": {
+                        "@type": "type.googleapis.com/envoy.extensions.filters.http.router.v3.Router"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "clusters": [
+      {
+        "name": "service_foo",
+        "connect_timeout": "0.25s",
+        "type": "STATIC",
+        "lb_policy": "ROUND_ROBIN",
+        "load_assignment": {
+          "cluster_name": "service_foo",
+          "endpoints": [
+            {
+              "lb_endpoints": [
+                {
+                  "endpoint": {
+                    "address": {
+                      "socket_address": {
+                        "address": "127.0.0.1",
+                        "port_value": 8080
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}`,
 			expectError: false,
 		},
 		{
 			name: "missing listener address",
-			yaml: `node:
-  id: test-id
-  cluster: test-cluster
-static_resources:
-  listeners:
-    - name: listener_0
-      # Missing required address field`,
+			yaml: `{
+  "node": {
+    "id": "test-id",
+    "cluster": "test-cluster"
+  },
+  "static_resources": {
+    "listeners": [
+      {
+        "name": "listener_0"
+      }
+    ]
+  }
+}`,
 			expectError: true,
-			errorMsg:    `error initializing configuration '': error adding listener named 'listener_0': address is necessary`,
+			errorMsg:    `error initializing configuration '/dev/fd/0': error adding listener named 'listener_0': address is necessary`,
 		},
 		{
 			name: "invalid regex in route match",
-			yaml: `node:
-  id: test-id
-  cluster: test-cluster
-static_resources:
-  listeners:
-    - name: listener_0
-      address:
-        socket_address:
-          address: 0.0.0.0
-          port_value: 10000
-      filter_chains:
-        - filters:
-            - name: envoy.filters.network.http_connection_manager
-              typed_config:
-                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-                stat_prefix: ingress_http
-                route_config:
-                  name: local_route
-                  virtual_hosts:
-                    - name: local_service
-                      domains: ["*"]
-                      routes:
-                        - match:
-                            safe_regex:
-                              regex: "[[invalid.regex"  # Invalid regex pattern
-                          route:
-                            cluster: service_foo
-  clusters:
-    - name: service_foo
-      connect_timeout: 0.25s
-      type: STATIC
-      lb_policy: ROUND_ROBIN
-      load_assignment:
-        cluster_name: service_foo
-        endpoints:
-          - lb_endpoints:
-              - endpoint:
-                  address:
-                    socket_address:
-                      address: 127.0.0.1
-                      port_value: 8080`,
+			yaml: `{
+  "node": {
+    "id": "test-id",
+    "cluster": "test-cluster"
+  },
+  "static_resources": {
+    "listeners": [
+      {
+        "name": "listener_0",
+        "address": {
+          "socket_address": {
+            "address": "0.0.0.0",
+            "port_value": 10000
+          }
+        },
+        "filter_chains": [
+          {
+            "filters": [
+              {
+                "name": "envoy.filters.network.http_connection_manager",
+                "typed_config": {
+                  "@type": "type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager",
+                  "stat_prefix": "ingress_http",
+                  "route_config": {
+                    "name": "local_route",
+                    "virtual_hosts": [
+                      {
+                        "name": "local_service",
+                        "domains": ["*"],
+                        "routes": [
+                          {
+                            "match": {
+                              "safe_regex": {
+                                "regex": "[[invalid.regex"
+                              }
+                            },
+                            "route": {
+                              "cluster": "service_foo"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "http_filters": [
+                    {
+                      "name": "envoy.filters.http.router",
+                      "typed_config": {
+                        "@type": "type.googleapis.com/envoy.extensions.filters.http.router.v3.Router"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "clusters": [
+      {
+        "name": "service_foo",
+        "connect_timeout": "0.25s",
+        "type": "STATIC",
+        "lb_policy": "ROUND_ROBIN",
+        "load_assignment": {
+          "cluster_name": "service_foo",
+          "endpoints": [
+            {
+              "lb_endpoints": [
+                {
+                  "endpoint": {
+                    "address": {
+                      "socket_address": {
+                        "address": "127.0.0.1",
+                        "port_value": 8080
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  }
+}`,
 			expectError: true,
-			errorMsg:    `error initializing configuration '': missing ]:`,
+			errorMsg:    `error initializing configuration '/dev/fd/0': missing ]:`,
 		},
 	}
 
@@ -231,10 +330,10 @@ func TestExtractEnvoyError(t *testing.T) {
 		},
 		{
 			name: "error message with context",
-			input: `error initializing configuration '': missing ]:
+			input: `error initializing configuration '/dev/fd/0': missing ]:
   in regex filter at line 42
   validation context: http_connection_manager`,
-			expected: "error initializing configuration '': missing ]: in regex filter at line 42 validation context: http_connection_manager",
+			expected: "error initializing configuration '/dev/fd/0': missing ]: in regex filter at line 42 validation context: http_connection_manager",
 		},
 		{
 			name: "docker pull logs present",
@@ -258,8 +357,8 @@ f90c8eb4724c: Pull complete
 e800bbdc2f77: Pull complete
 Digest: sha256:98c645568997299a1c4301e6077a1d2f566bb20828c0739e6c4177a821524dad
 Status: Downloaded newer image for quay.io/solo-io/envoy-gloo:1.35.2-patch4
-error initializing configuration '': invalid named capture group: (?<=foo)bar`,
-			expected: "error initializing configuration '': invalid named capture group: (?<=foo)bar",
+error initializing configuration '/dev/fd/0': invalid named capture group: (?<=foo)bar`,
+			expected: "error initializing configuration '/dev/fd/0': invalid named capture group: (?<=foo)bar",
 		},
 		{
 			name: "docker pull logs with multi-line error",
@@ -267,26 +366,26 @@ error initializing configuration '': invalid named capture group: (?<=foo)bar`,
 1.35.2-patch1: Pulling from solo-io/envoy-gloo
 f90c8eb4724c: Pull complete
 Status: Downloaded newer image for quay.io/solo-io/envoy-gloo:1.35.2-patch4
-error initializing configuration '': missing ]:
+error initializing configuration '/dev/fd/0': missing ]:
   at line 42 in filter configuration
   regex validation failed`,
-			expected: "error initializing configuration '': missing ]: at line 42 in filter configuration regex validation failed",
+			expected: "error initializing configuration '/dev/fd/0': missing ]: at line 42 in filter configuration regex validation failed",
 		},
 		{
 			name: "platform warning with error",
 			input: `WARNING: The requested image's platform (linux/amd64) does not match the detected host platform
-error initializing configuration '': listener validation failed
+error initializing configuration '/dev/fd/0': listener validation failed
   invalid port configuration`,
-			expected: "error initializing configuration '': listener validation failed invalid port configuration",
+			expected: "error initializing configuration '/dev/fd/0': listener validation failed invalid port configuration",
 		},
 		{
 			name: "error with empty lines",
-			input: `error initializing configuration '': validation error
+			input: `error initializing configuration '/dev/fd/0': validation error
 
 additional context here
 
 more details`,
-			expected: "error initializing configuration '': validation error additional context here more details",
+			expected: "error initializing configuration '/dev/fd/0': validation error additional context here more details",
 		},
 	}
 

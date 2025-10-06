@@ -42,7 +42,7 @@ func NewBinary(path ...string) Validator {
 }
 
 func (b *binaryValidator) Validate(ctx context.Context, yaml string) error {
-	cmd := exec.CommandContext(ctx, b.path, "--mode", "validate", "--config-yaml", yaml, "-l", "critical", "--log-format", "%v") //nolint:gosec // G204: envoy binary with controlled args for config validation
+	cmd := exec.CommandContext(ctx, b.path, "--mode", "validate", "--config-path", "/dev/fd/0", "-l", "critical", "--log-format", "%v") //nolint:gosec // G204: envoy binary with controlled args for config validation
 	cmd.Stdin = strings.NewReader(yaml)
 	var e bytes.Buffer
 	cmd.Stderr = &e
@@ -83,7 +83,7 @@ func (d *dockerValidator) Validate(ctx context.Context, yaml string) error {
 		d.img,
 		"--mode",
 		"validate",
-		"--config-yaml", yaml,
+		"--config-path", "/dev/fd/0",
 		"-l", "critical",
 		"--log-format", "%v",
 	)
