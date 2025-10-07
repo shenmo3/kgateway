@@ -19,14 +19,14 @@ func TestBinaryValidator_Validate(t *testing.T) {
 	// validator tests.
 	tests := []struct {
 		name        string
-		yaml        string
+		json        string
 		mockBinary  func(t *testing.T) string
 		expectError bool
 		errorMsg    string
 	}{
 		{
 			name: "successful validation",
-			yaml: "any-config-here",
+			json: "any-config-here",
 			mockBinary: func(t *testing.T) string {
 				script := `#!/bin/sh
 if [ "$1" != "--mode" ] || [ "$2" != "validate" ] || [ "$3" != "--config-path" ]; then
@@ -41,7 +41,7 @@ exit 0
 		},
 		{
 			name: "validation error with envoy-style message",
-			yaml: "any-config-here", // actual config content doesn't matter for this test
+			json: "any-config-here", // actual config content doesn't matter for this test
 			mockBinary: func(t *testing.T) string {
 				script := `#!/bin/sh
 if [ "$1" != "--mode" ] || [ "$2" != "validate" ] || [ "$3" != "--config-path" ]; then
@@ -58,7 +58,7 @@ exit 1
 		},
 		{
 			name: "binary execution failure",
-			yaml: "any-config-here", // actual config content doesn't matter for this test
+			json: "any-config-here", // actual config content doesn't matter for this test
 			mockBinary: func(t *testing.T) string {
 				script := `#!/bin/sh
 # Simulate a binary execution failure (e.g. segfault)
@@ -77,7 +77,7 @@ exit 2
 			defer os.Remove(mockPath)
 
 			validator := NewBinary(mockPath)
-			err := validator.Validate(context.Background(), tt.yaml)
+			err := validator.Validate(context.Background(), tt.json)
 			if tt.expectError {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errorMsg)
@@ -91,13 +91,13 @@ exit 2
 func TestDockerValidator_Validate(t *testing.T) {
 	tests := []struct {
 		name        string
-		yaml        string
+		json        string
 		expectError bool
 		errorMsg    string
 	}{
 		{
 			name: "valid configuration",
-			yaml: `{
+			json: `{
   "node": {
     "id": "test-id",
     "cluster": "test-cluster"
@@ -187,7 +187,7 @@ func TestDockerValidator_Validate(t *testing.T) {
 		},
 		{
 			name: "missing listener address",
-			yaml: `{
+			json: `{
   "node": {
     "id": "test-id",
     "cluster": "test-cluster"
@@ -205,7 +205,7 @@ func TestDockerValidator_Validate(t *testing.T) {
 		},
 		{
 			name: "invalid regex in route match",
-			yaml: `{
+			json: `{
   "node": {
     "id": "test-id",
     "cluster": "test-cluster"
@@ -298,9 +298,9 @@ func TestDockerValidator_Validate(t *testing.T) {
 		},
 		{
 			// should not error with argument too long
-			// empty error msg due to too long since it tries to print entire invalid yaml
+			// empty error msg due to too long since it tries to print entire invalid json
 			name:        "validate very large config",
-			yaml:        strings.Repeat("1", 1000000),
+			json:        strings.Repeat("1", 1000000),
 			expectError: true,
 			errorMsg:    ``,
 		},
@@ -309,7 +309,7 @@ func TestDockerValidator_Validate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			validator := NewDocker()
-			err := validator.Validate(context.Background(), tt.yaml)
+			err := validator.Validate(context.Background(), tt.json)
 
 			if tt.expectError {
 				require.Error(t, err)
