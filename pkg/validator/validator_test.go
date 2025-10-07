@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -294,6 +295,14 @@ func TestDockerValidator_Validate(t *testing.T) {
 }`,
 			expectError: true,
 			errorMsg:    `error initializing configuration '/dev/fd/0': missing ]:`,
+		},
+		{
+			// should not error with argument too long
+			// empty error msg due to too long since it tries to print entire invalid yaml
+			name:        "validate very large config",
+			yaml:        strings.Repeat("1", 1000000),
+			expectError: true,
+			errorMsg:    ``,
 		},
 	}
 
